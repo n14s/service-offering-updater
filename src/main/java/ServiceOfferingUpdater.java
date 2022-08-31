@@ -1,67 +1,37 @@
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.internal.storage.file.FileRepository;
+import org.eclipse.jgit.lib.Ref;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
+
+import static org.eclipse.jgit.lib.Constants.R_TAGS;
 
 
 public class ServiceOfferingUpdater {
-    void initialize(String repoUrl) throws IOException {
+    void initialize(String repoUrl) throws IOException, GitAPIException {
         ServiceRepository serviceRepository = new ServiceRepository(repoUrl);
-        cloneRepo(serviceRepository);
-    }
+        serviceRepository.cloneRepository();
+        extractTags(serviceRepository);
 
-        void cloneRepo(ServiceRepository serviceRepository) {
-            try {
-                //parse url, username and pw
-                String[] repoUrlElements = parseRepoUrl(serviceRepository.getRepoUrl());
-                String repoName = repoUrlElements[0];
-                String bareUrl = repoUrlElements[1];
-                String gitUsername = repoUrlElements[2];
-                String gitPassword= repoUrlElements[3];
-
-                UsernamePasswordCredentialsProvider credentialsProvider = new UsernamePasswordCredentialsProvider( gitUsername, gitPassword);
-
-                serviceRepository.setRepoDir(FileUtil.getExecutionPath(this)+ repoName);
-
-                Git git = Git.cloneRepository()
-                        .setURI(bareUrl)
-                        .setDirectory(new File(serviceRepository.getRepoDir()))
-                        .call();
-
-            } catch (Exception e) {
-                System.out.println(e);
-            }
+        for (Ref tag : serviceRepository.getTags()){
+            serviceRepository.checkoutTag(tag);
+//           parseServiceOffering();
         }
 
-    String[] parseRepoUrl(String repoUrl){
-        String repoName = "";
-        String bareUrl = "";
-        String gitUsername = "";
-        String gitPassword = "";
-
-        repoName = repoUrl.substring(repoUrl.lastIndexOf('/') + 1, repoUrl.lastIndexOf('.'));
-        bareUrl = repoUrl.substring(repoUrl.lastIndexOf('@') + 1);
-
-        if (repoUrl.contains("@")) {
-            String gitUsernamePassword = repoUrl.substring(0,repoUrl.lastIndexOf('@'));
-            gitUsername= gitUsernamePassword.substring(0,gitUsernamePassword.indexOf(":"));
-            gitPassword= gitUsernamePassword.substring(gitUsernamePassword.indexOf(":") + 1);
-        }
-
-        String[] repoUrlElements = {repoName, bareUrl, gitUsername, gitPassword};
-        return repoUrlElements;
+        serviceRepository.getGit().close();
     }
 
-
-
-
+    void extractTags(ServiceRepository serviceRepository) throws IOException {
+        List<Ref> extractedTags = new FileRepository(new File(serviceRepository.getRepoDir(), ".git")).getRefDatabase().getRefsByPrefix(R_TAGS);
+        serviceRepository.setTags(extractedTags);
+    }
 
     void update(){
-
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, GitAPIException {
         ServiceOfferingUpdater serviceOfferingUpdater = new ServiceOfferingUpdater();
         serviceOfferingUpdater.initialize("https://github.com/n14s/grafana-service-offering.git");
     }
