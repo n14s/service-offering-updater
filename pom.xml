@@ -19,6 +19,15 @@
             <artifactId>org.eclipse.jgit</artifactId>
             <version>6.2.0.202206071550-r</version>
         </dependency>
+        <dependency>
+            <groupId>de.fhg.ipa.ced</groupId>
+            <artifactId>service_registry.model</artifactId>
+            <version>1.0.0-RELEASE</version>
+        </dependency>
+        <dependency>
+            <groupId>de.fhg.ipa.ced</groupId>
+            <artifactId>service_registry.service.initializer</artifactId>
+            <version>1.0.0-RELEASE</version>
+        </dependency>
     </dependencies>
-
 </project>
