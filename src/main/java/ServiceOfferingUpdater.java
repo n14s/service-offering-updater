@@ -15,8 +15,6 @@ import static org.eclipse.jgit.lib.Constants.R_TAGS;
 
 public class ServiceOfferingUpdater {
     int updateIntervalHours;
-    List<DockerComposeServiceOfferingDTOFileImport> previousServiceOfferingDTOs = new ArrayList<DockerComposeServiceOfferingDTOFileImport>();
-    List<DockerComposeServiceOfferingDTOFileImport> currentServiceOfferingDTOs = new ArrayList<DockerComposeServiceOfferingDTOFileImport>();
 
     ServiceRepository serviceRepository;
 
@@ -28,19 +26,8 @@ public class ServiceOfferingUpdater {
     void run() throws IOException, GitAPIException, ExecutionException, InterruptedException {
         serviceRepository.cloneRepository();
         extractTags();
-        createDTOs();
+        // createDTOs (initialize)
         updateDTOs();
-    }
-
-    void createDTOs() throws GitAPIException {
-        this.previousServiceOfferingDTOs = this.currentServiceOfferingDTOs;
-
-        for (Ref tag : this.serviceRepository.getTags()){
-            this.serviceRepository.checkoutTag(tag);
-            DockerComposeServiceOfferingDTOFileImport dockerComposeServiceOfferingDTOFileImport
-                    = parseServiceOffering(serviceRepository.getRepoDir());
-            this.currentServiceOfferingDTOs.add(dockerComposeServiceOfferingDTOFileImport);
-        }
     }
 
     private DockerComposeServiceOfferingDTOFileImport parseServiceOffering(String repoDir) {
@@ -54,17 +41,12 @@ public class ServiceOfferingUpdater {
     }
 
     void updateDTOs() throws ExecutionException, InterruptedException {
+        UpdateTask updateTask = new UpdateTask(this.serviceRepository);
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(ServiceOfferingUpdater::update, this.updateIntervalHours, this.updateIntervalHours, TimeUnit.SECONDS);
-        System.out.println(future.get());
+        executorService.scheduleAtFixedRate(updateTask, this.updateIntervalHours, this.updateIntervalHours, TimeUnit.SECONDS);
+
 //        currentServiceOfferingDTOs.removeAll(previousServiceOfferingDTOs);
     }
-
-    private static String update() {
-        System.out.println("update");
-        return "hi";
-    }
-
 
 
     public static void main(String[] args) throws IOException, GitAPIException, ExecutionException, InterruptedException {
