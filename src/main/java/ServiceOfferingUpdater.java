@@ -8,27 +8,39 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.*;
 
 import static org.eclipse.jgit.lib.Constants.R_TAGS;
 
 
 public class ServiceOfferingUpdater {
-    List<DockerComposeServiceOfferingDTOFileImport> initialize(String repoUrl) throws IOException, GitAPIException {
-        List<DockerComposeServiceOfferingDTOFileImport> dockerComposeServiceOfferingDTOFileImports
-                = new ArrayList<DockerComposeServiceOfferingDTOFileImport>();
+    int updateIntervalHours;
+    List<DockerComposeServiceOfferingDTOFileImport> previousServiceOfferingDTOs = new ArrayList<DockerComposeServiceOfferingDTOFileImport>();
+    List<DockerComposeServiceOfferingDTOFileImport> currentServiceOfferingDTOs = new ArrayList<DockerComposeServiceOfferingDTOFileImport>();
 
-        ServiceRepository serviceRepository = new ServiceRepository(repoUrl);
+    ServiceRepository serviceRepository;
+
+    ServiceOfferingUpdater(ServiceRepository serviceRepository, int updateIntervalHours) {
+        this.serviceRepository = serviceRepository;
+        this.updateIntervalHours = updateIntervalHours;
+
+    }
+    void run() throws IOException, GitAPIException, ExecutionException, InterruptedException {
         serviceRepository.cloneRepository();
-        extractTags(serviceRepository);
+        extractTags();
+        createDTOs();
+        updateDTOs();
+    }
 
-        for (Ref tag : serviceRepository.getTags()){
-            serviceRepository.checkoutTag(tag);
+    void createDTOs() throws GitAPIException {
+        this.previousServiceOfferingDTOs = this.currentServiceOfferingDTOs;
+
+        for (Ref tag : this.serviceRepository.getTags()){
+            this.serviceRepository.checkoutTag(tag);
             DockerComposeServiceOfferingDTOFileImport dockerComposeServiceOfferingDTOFileImport
                     = parseServiceOffering(serviceRepository.getRepoDir());
-            dockerComposeServiceOfferingDTOFileImports.add(dockerComposeServiceOfferingDTOFileImport);
+            this.currentServiceOfferingDTOs.add(dockerComposeServiceOfferingDTOFileImport);
         }
-        serviceRepository.getGit().close();
-        return dockerComposeServiceOfferingDTOFileImports;
     }
 
     private DockerComposeServiceOfferingDTOFileImport parseServiceOffering(String repoDir) {
@@ -36,16 +48,29 @@ public class ServiceOfferingUpdater {
         return FileUtil.loadFromFile(new File(serviceOfferingPath), DockerComposeServiceOfferingDTOFileImport.class);
     }
 
-    void extractTags(ServiceRepository serviceRepository) throws IOException {
-        List<Ref> extractedTags = new FileRepository(new File(serviceRepository.getRepoDir(), ".git")).getRefDatabase().getRefsByPrefix(R_TAGS);
-        serviceRepository.setTags(extractedTags);
+    void extractTags() throws IOException {
+        List<Ref> extractedTags = new FileRepository(new File(this.serviceRepository.getRepoDir(), ".git")).getRefDatabase().getRefsByPrefix(R_TAGS);
+        this.serviceRepository.setTags(extractedTags);
     }
 
-    void update(){
+    void updateDTOs() throws ExecutionException, InterruptedException {
+        ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+        ScheduledFuture<?> future = executorService.scheduleAtFixedRate(ServiceOfferingUpdater::update, this.updateIntervalHours, this.updateIntervalHours, TimeUnit.SECONDS);
+        System.out.println(future.get());
+//        currentServiceOfferingDTOs.removeAll(previousServiceOfferingDTOs);
     }
 
-    public static void main(String[] args) throws IOException, GitAPIException {
-        ServiceOfferingUpdater serviceOfferingUpdater = new ServiceOfferingUpdater();
-        List<DockerComposeServiceOfferingDTOFileImport> dockerComposeServiceOfferingDTOFileImports = serviceOfferingUpdater.initialize("https://github.com/n14s/grafana-service-offering.git");
+    private static String update() {
+        System.out.println("update");
+        return "hi";
+    }
+
+
+
+    public static void main(String[] args) throws IOException, GitAPIException, ExecutionException, InterruptedException {
+        String repoUrl = "https://github.com/n14s/grafana-service-offering.git";
+        ServiceOfferingUpdater serviceOfferingUpdater = new ServiceOfferingUpdater(new ServiceRepository(repoUrl), 10);
+        serviceOfferingUpdater.run();
+
     }
 }
