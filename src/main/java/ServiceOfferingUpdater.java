@@ -4,7 +4,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Ref;
 
 import java.io.File;
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -12,9 +12,6 @@ public class ServiceOfferingUpdater {
     int updateIntervalHours;
     ServiceRepository serviceRepository;
     UpdateTagsTask updateTagsTask;
-    private List<Ref> currentTags;
-    private List<Ref> previousTags;
-    private List<DockerComposeServiceOfferingDTOFileImport> currentServiceOfferingDTOs;
 
     ServiceOfferingUpdater(ServiceRepository serviceRepository, int updateIntervalHours) {
         this.serviceRepository = serviceRepository;
@@ -22,8 +19,8 @@ public class ServiceOfferingUpdater {
         this.updateTagsTask = new UpdateTagsTask(this.serviceRepository);
 
     }
-    void start() throws ExecutionException, InterruptedException {
-        serviceRepository.cloneRepository();
+    void start() throws InterruptedException {
+        serviceRepository.cloneAndAssignRepository();
         initializeDTOs();
         updateDTOs();
     }
@@ -33,28 +30,37 @@ public class ServiceOfferingUpdater {
 
     private void initializeDTOs() throws InterruptedException {
         this.updateTagsTask.run();
-        List<Ref> extractedTags = this.updateTagsTask.getQueue().take();
-        this.serviceRepository.setTags(extractedTags);
-        checkoutTagsAndCreateDTOs();
+        List<Ref> queuedTags = this.updateTagsTask.getQueue().take();
+        this.serviceRepository.setTags(queuedTags);
+        List<DockerComposeServiceOfferingDTOFileImport> initialServiceOfferingDTOs = checkoutTagsAndCreateDTOs(queuedTags);
+
+        // Handle initialServiceOfferingDTOs. Replace next line.
+        System.out.println("initial DTOs: " + initialServiceOfferingDTOs);
     }
 
-    void updateDTOs() throws ExecutionException, InterruptedException {
+    void updateDTOs() throws InterruptedException {
         ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
         executorService.scheduleAtFixedRate(updateTagsTask, this.updateIntervalHours, this.updateIntervalHours, TimeUnit.SECONDS);
 
         while(true) {
-            this.previousTags = this.currentTags;
-            this.currentTags = this.updateTagsTask.getQueue().take();
+            List<Ref> queuedTags = this.updateTagsTask.getQueue().take();
 
+            if (queuedTags.size() != this.serviceRepository.getTags().size()){
+                List<Ref> newTags = queuedTags.subList(this.serviceRepository.getTags().size(), queuedTags.size());
+                this.serviceRepository.setTags(queuedTags);
 
+                List<DockerComposeServiceOfferingDTOFileImport> newServiceOfferingDTOs = checkoutTagsAndCreateDTOs(newTags);
+
+                // handle newServiceOfferingDTOs. Replace next line.
+                System.out.println("new DTOs: " + newServiceOfferingDTOs);
+            }
         }
-
-//        currentServiceOfferingDTOs.removeAll(previousServiceOfferingDTOs);
     }
-    void checkoutTagsAndCreateDTOs() {
+    List<DockerComposeServiceOfferingDTOFileImport> checkoutTagsAndCreateDTOs(List<Ref> newTags) {
         String serviceOfferingPath = this.serviceRepository.getRepoDir() + "/service-offering.json";
+        List<DockerComposeServiceOfferingDTOFileImport> newServiceOfferingDTOs = new ArrayList<>();
 
-        for (Ref tag : this.serviceRepository.getTags()) {
+        for (Ref tag : newTags) {
             try {
                 this.serviceRepository.checkoutTag(tag);
             } catch (GitAPIException e) {
@@ -62,18 +68,16 @@ public class ServiceOfferingUpdater {
             }
             DockerComposeServiceOfferingDTOFileImport dockerComposeServiceOfferingDTOFileImport
                     = FileUtil.loadFromFile(new File(serviceOfferingPath), DockerComposeServiceOfferingDTOFileImport.class);
-            this.currentServiceOfferingDTOs.add(dockerComposeServiceOfferingDTOFileImport);
+            newServiceOfferingDTOs.add(dockerComposeServiceOfferingDTOFileImport);
         }
+        return newServiceOfferingDTOs;
     }
 
-    private DockerComposeServiceOfferingDTOFileImport parseServiceOffering(String repoDir) {
-    }
 
-    public static void main(String[] args) throws IOException, GitAPIException, ExecutionException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException {
         String repoUrl = "https://github.com/n14s/grafana-service-offering.git";
         ServiceOfferingUpdater serviceOfferingUpdater = new ServiceOfferingUpdater(new ServiceRepository(repoUrl), 10);
         serviceOfferingUpdater.start();
 
     }
-
 }
